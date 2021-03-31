@@ -153,18 +153,18 @@ df_d[['de']] = as.numeric(df_d[['de']])
 df_d
 ```
 
-Compared with population mean, and ratio of se and 100 samples of se.
-The diff of mean is less compared with 100 samples and the se is decreasing also because of the sample size.
+Compared SE of 100 samples with population std and sample mean std
+The SE of 100 samples are similar with sample mean std which is proved by CLT and we could use SE to estimate sample mean CI, and the population std are large since we have a sqrt n correction for SE of samples.
 
 ```{r 1-7-2}
 
 df_a = df_total
 df_g = df_sample %>% group_by(decade) %>% summarize(means = mean(mean_s), std = sd(mean_s))
 df_a[['means']] = df_g[['means']] - df_total[['means']]
-df_a[['std']] = df_d[['de']] / df_total[['std']]
-names(df_a) = c('decade', 'diff of mean', 'ratio of se')
-df_a[['ratio of 100 samples']] = df_d[['de']] / df_de[['de']]
-df_a
+df_a[['ratio of sample mean std and SE of 100 sample']] = df_g[['std']] / df_de[['de']]
+
+df_a[['ratio of population std and SE of 100 samples']] = df_total[['std']] / df_de[['de']]
+df_a[c("decade", "ratio of sample mean std and SE of 100 sample", 'ratio of population std and SE of 100 samples')]
 
 ```
 
