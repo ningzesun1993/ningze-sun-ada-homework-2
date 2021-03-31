@@ -1,0 +1,364 @@
+---
+title: "ningze_sun_hw2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## HW2
+
+Ningze Sun ns28798
+
+Load all the library and function needed in this homework.
+list_to_df is a function that I can transfer list() to dataframe pretty
+cal_ci is a function to calculate confidence interval
+cal_de is a function to calculate SE with specific mean
+
+```{r load_lib,results='hide', warning = 0, message = 0}
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+
+library(mosaic)
+library(reshape2)
+library(ggpubr)
+theme_set(theme_pubr())
+
+
+list_to_df = function(missing, columns_name){
+  df = data.frame(matrix(unlist(missing), nrow = length(missing), byrow = TRUE))
+  names(df) = columns_name
+  return(df)
+}
+
+
+cal_ci = function(means, std, n){
+  error = qnorm(0.975) * std / sqrt(n)
+  return(c(means - error, means + error))
+}
+
+
+cal_de = function(df_total, df_s, i){
+  means = df_total[df_total$decade == i,]$means[1]
+  test = df_s[df_s$decade == i,]$runtimeMinutes
+  n = length(test)
+  de = sqrt(sum((test - means)^2) / n) / sqrt(n)
+  return(de)
+}
+```
+
+## Challenge 1
+
+Load the IMDB-movies.csv dataset
+
+Use one-line to filter the dataset that having 1920 to 1979 and movies that are between 1 and 3 hours long and add decades. And it should have 5651 rows in the dataset
+
+```{r 1-1}
+df = read.csv('./IMDB-movies.csv', sep = ',', stringsAsFactors = FALSE)
+df = as_tibble(df)
+df_filter = df %>% filter(runtimeMinutes <= 180 & runtimeMinutes >= 60 & startYear <= 1979 & startYear >= 1920) %>% 
+  mutate(decade = paste0(as.character(floor(startYear%%100/10)*10), 's'))
+print(nrow(df_filter))
+```
+
+ plot histograms of the distribution of runtimeMinutes for each decade.
+
+
+```{r 1-2}
+ggplot(data = df_filter, aes(x = runtimeMinutes)) + geom_histogram(binwidth = 10, color="black", fill="white") + 
+  labs(title = "histograms of runtimeMinutes for each decade", y = "runtimeMinutes", x = "") + facet_wrap(~ decade)
+```
+
+Use a one-line to calculate the population mean and population std in runtimeMinutes for each decade and save the results in a new dataframe, results.
+
+```{r 1-3}
+df_total = df_filter %>% group_by(decade) %>% summarize(means = mean(runtimeMinutes), std = sd(runtimeMinutes))
+result = df_total
+result
+
+```
+
+Draw a single sample of 100 movies, without replacement, from each decade, calculate this single sample mean and sample std in runtimeMinutes
+
+```{r 1-4-1}
+df_s = df_filter %>% group_by(decade) %>% sample_n(100)
+df_g = df_s %>% group_by(decade) %>% summarize(means = mean(runtimeMinutes), std = sd(runtimeMinutes))
+df_g
+```
+
+estimate the SE around the population mean. I calculate the standard deviation with population mean and divide the sample size. And to calculate standard deviation, I used n instead n - 1 since we used population mean instead of sample mean so using n is unbiased. However, during calculation of confidence interval, the standard error should be done by calculate sample std adn divided with sample size since we used sample mean to estimate population mean which is the null hypothesis.
+
+```{r 1-4-2}
+de_result = list()
+uniq = distinct(as.data.frame(df_s$decade), .keep_all=TRUE)[[1]]
+for (i in 1:length(uniq)){
+  de_result[[i]] = c(uniq[[i]],cal_de(df_total, df_s, uniq[[i]]))
+}
+df_de = list_to_df(de_result, c("decade", 'de'))
+df_de[['de']] = as.numeric(df_de[['de']])
+df_de
+
+```
+
+Compare these estimates to the actual population mean runtimeMinutes for each decade and to the calculated SE in the population mean for samples of size 100 based on the population standard deviation for each decade.
+In here, I used the estimated mean - population mean and estimated de / population std.
+The diff of mean is good and the ratio of se is because of the decreasing based on sample size
+
+
+```{r 1-5}
+df_a = df_total
+df_a[['means']] = df_g[['means']] - df_total[['means']]
+df_a[['std']] = df_de[['de']] / df_total[['std']]
+names(df_a) = c('decade', 'diff of mean', 'ratio of se')
+df_a
+
+```
+
+
+Generate a sampling distribution of mean runtimeMinutes. Calculating the mean runtimeMinutes and the standard deviation in runtimeMinutes
+
+```{r 1-6}
+samples = df_filter %>% group_by(decade) %>% sample_n(100)
+samples = samples[c('runtimeMinutes', 'decade')]
+# samples_group = samples  %>% group_by(decade) %>% summarize(means = mean(runtimeMinutes), std = sd(runtimeMinutes))
+samples[['num']] = 1
+for (i in 2:1000){
+  df_t = df_filter %>% group_by(decade) %>% sample_n(100)
+  df_t = df_t[c('runtimeMinutes', 'decade')]
+  df_t[['num']] = i
+  samples = bind_rows(samples, df_t)
+}
+df_sample = samples %>% group_by(decade, num) %>% summarize(mean_s = mean(runtimeMinutes), std = sd(runtimeMinutes))
+
+```
+
+plot a histogram of the sampling distribution. The shape looks like normal distribution. This makes sense based on CLT.
+
+```{r 1-6-2}
+ggplot(data = df_sample, aes(x = mean_s)) + geom_histogram(binwidth = 2, color="black", fill="white") + 
+  labs(title = "histograms of means of sample for each decade", y = "runtimeMinutes", x = "") + facet_wrap(~ decade)
+```
+
+Calculate and compare standard error
+
+```{r 1-7-1}
+de_result = list()
+for (i in 1:length(uniq)){
+  de_result[[i]] = c(uniq[[i]], cal_de(df_total, samples, uniq[[i]]))
+}
+df_d = list_to_df(de_result, c("decade", 'de'))
+df_d[['de']] = as.numeric(df_d[['de']])
+df_d
+```
+
+Compared with population mean, and ratio of se and 100 samples of se.
+The diff of mean is less compared with 100 samples and the se is decreasing also because of the sample size.
+
+```{r 1-7-2}
+
+df_a = df_total
+df_g = df_sample %>% group_by(decade) %>% summarize(means = mean(mean_s), std = sd(mean_s))
+df_a[['means']] = df_g[['means']] - df_total[['means']]
+df_a[['std']] = df_d[['de']] / df_total[['std']]
+names(df_a) = c('decade', 'diff of mean', 'ratio of se')
+df_a[['ratio of 100 samples']] = df_d[['de']] / df_de[['de']]
+df_a
+
+```
+
+
+## Challenge 2
+
+What is the probability that she will see 9 or fewer bees arrive during any given session?
+
+```{r 2-1}
+ppois(9, 12)
+```
+
+What is the probability that she will see no bees arrive in a session?
+
+```{r 2-2}
+dpois(0, 12)
+```
+
+What is the probability that she will see exactly 5 bees arrive in a session?
+
+```{r 2-3}
+dpois(5, 12)
+```
+
+What is the probability that she will see more than 18 bees arrive in a session?
+
+```{r 2-4}
+1 - ppois(18, 12)
+```
+
+Plot the relevant Poisson mass function over the values in range 0 ≤ x ≤ 24.
+
+```{r 2-5}
+ggplot(data = data.frame(list(x = 0:24, prob = dpois(0:24, 12))), aes(x, prob)) + 
+  geom_bar(stat="identity", fill="steelblue") + labs(x = "x", y = "prob")
+```
+
+Using the rpois() function, simulate 1460 results from this distribution
+Plot the simulated results using the histogram() function from the {mosaic} package and use xlim() to set the horizontal limits to be from 0 to 24.
+This is basically normal distribution. with mean of possion distribution mean
+
+```{r 2-6}
+p_5 = data.frame(num_of_foragers = rpois(1460, 12))
+histogram(~num_of_foragers, data = p_5, xlim = c(0, 24))
+```
+
+## Challenge 3
+
+Load in the dataset “zombies.csv”
+Calculate the population mean and standard deviation for each quantitative random variable
+
+```{r 3-1}
+df_3 = as_tibble(read.csv("zombies.csv", sep = ',', stringsAsFactors = FALSE))
+var = c("height", "weight", "zombies_killed", "years_of_education", "age")
+df_q = data.frame(list(mean = sapply(df_3[var], mean), std = sapply(df_3[var], sd)))
+df_q
+```
+
+Use {ggplot} and make boxplots of each of these variables by gender.
+
+```{r 3-2}
+var = c("height", "weight", "zombies_killed", "years_of_education", "age", "gender")
+df_m = melt(df_3[var], id.var = "gender")
+ggplot(df_m, aes(x = variable, y = value)) + geom_boxplot(aes(fill = gender)) + facet_wrap(~variable, scales = "free")
+```
+
+
+Use {ggplot2} and make scatterplots of height and weight in relation to age, using different colored points for males versus females.
+
+```{r 3-3}
+h = ggplot(df_3, aes(x = age, y = height)) + geom_point(size = 2, color = 'blue')+ 
+  facet_wrap(~gender, scales = "free")
+w = ggplot(df_3, aes(x = age, y = weight)) + geom_point(size = 2, color = 'red')+ 
+  facet_wrap(~gender, scales = "free")
+ggarrange(h, w, labels = c("A", "B"), ncol = 1, nrow = 2)
+```
+
+Seems there are relationship between each other, I will test with correlation: height shows r squared 0.73 suggests it has a strong correlation. But the weight only has 0.35 r squared, this suggest the correlaton is weak
+
+```{r 3-3-1}
+df_f = df_3 %>% filter(gender == "Female")
+df_male = df_3 %>% filter(gender == "Male") 
+cor.test(df_f$age, df_f$height)
+cor.test(df_male$age, df_male$height)
+cor.test(df_f$age, df_f$weight)
+cor.test(df_male$age, df_male$weight)
+```
+
+Using histograms and Q-Q plots, check whether the quantitative variables seem to be drawn from a normal distribution.
+
+```{r 3-4}
+ggplot(df_m, aes(value)) + 
+  geom_histogram(binwidth = 2, color="black", fill="blue") +  
+  facet_wrap(~variable, scales = "free")
+```
+
+Based on qq plots, height, weight age is normal distribution, but zombies killed and years of education which are discrete values which cannot used qq plot and they are not normal distribution
+
+
+```{r 3-4-2}
+ggplot(df_m, aes(sample = value)) + stat_qq() + stat_qq_line() + 
+  facet_wrap(~variable, scales = "free")
+```
+
+Also use sharpiro test to determine which is normal distribution. So height, weight, age are normal distribution since the p value is larger than 0.05 which cannot reject the null
+
+```{r 3-4-3}
+
+var = c("height", "weight", "zombies_killed", "years_of_education", "age")
+for (i in var){
+  print(i)
+  print(shapiro.test(df_3[[i]]))
+}
+```
+
+sample ONE subset of 50 zombie apocalypse survivors,construct a 95% confidence interval for each mean. Use normal distribution since most of them have 50 random samples we can use z estimate besides most of factors are normal distribution.
+
+```{r 3-5}
+df_sample = df_3 %>% sample_n(50)
+t_result = list()
+for (i in 1:length(var)){
+  print(var[[i]])
+  t = df_sample %>%summarize(means = mean(!!as.symbol(var[[i]])), std = sd(!!as.symbol(var[[i]])))
+  t_result[[i]] = c(var[[i]], t$means, t$std/sqrt(50))
+  print(cal_ci(t$means, t$std, 50))
+}
+df_t_res = list_to_df(t_result, c("variable", "mean", "std"))
+df_t_res[['mean']] = as.numeric(df_t_res[['mean']])
+df_t_res[['std']] = as.numeric(df_t_res[['std']])
+```
+
+Show all the mean and SE for each variable
+
+```{r 3-5-3}
+df_t_res
+
+```
+
+
+draw another 99 random samples of 50 zombie apocalypse survivors out and calculate the mean for each of the these samples
+means and standard deviations of the sampling distribution for each variable
+
+```{r 3-6, warning = 0}
+df_sample[['sample']] = 1
+for (i in 2:100){
+  df_t = df_3 %>% sample_n(50)
+  df_t[['sample']] = i
+  df_sample = bind_rows(df_sample, df_t)
+}
+df_gr = df_sample %>% group_by(sample) %>% summarize(height = mean(height), 
+         weight = mean(weight), zombies_killed = mean(zombies_killed),  
+          years_of_education = mean(years_of_education), age = mean(age))
+df_gm = df_gr %>% summarize(height = mean(height), weight = mean(weight),
+                            zombies_killed = mean(zombies_killed), 
+                           years_of_education = mean(years_of_education),
+                           age = mean(age))
+df_gs = df_gr %>% summarize(height = sd(height),
+                            weight = sd(weight),
+                            zombies_killed = sd(zombies_killed),
+                            years_of_education = sd(years_of_education),
+                            age = sd(age))
+df_tr = bind_rows(df_gm, df_gs)
+df_tr = as_tibble(t(df_tr), rownames = "name")
+names(df_tr) = c("col_name", "mean", "std")
+df_tr
+```
+
+construct an 95% confidence interval for each mean directly from the sampling distribution of sample means using the central 95% that distribution.
+By using standard deviation of sample distribution which is suggests standard error. calculate the ci.
+
+
+```{r 3-7-2, warning = 0}
+for (i in 1:5){
+  print(df_tr[['col_name']][[i]])
+  print(cal_ci(df_tr[['mean']][[i]], df_tr[['std']][[i]], 1))
+}
+df_tt = df_tr
+df_tt$mean = df_tr$mean - df_t_res$mean
+df_tt$vars = df_tr$std - df_t_res$std
+```
+
+The std of sample distribution are similar of standard errors, this suggests that we could use CLT to estimate it.
+They are normally distributed. Even zombies killed and years of education are not normalized, the sample distribution is still normalized. And the CI from sample distribution and sample mean estimate are pertty similar. These all suggest that we can use sample mean to estimate the population mean with CLT.
+
+
+```{r 3-9}
+df_tt = df_tr
+df_tt$mean = (df_tr$mean - df_t_res$mean) 
+df_tt$std = (df_tr$std - df_t_res$std) 
+df_tt
+```
+
+```{r 3-8}
+df_m = melt(df_gr, id.var = "sample")
+ggplot(df_m, aes(value)) + geom_histogram(binwidth = 1, color="black", fill="white") + 
+  facet_wrap(~variable, scales = "free")
+```
